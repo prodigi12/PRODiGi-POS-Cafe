@@ -907,13 +907,41 @@
       if (notice) { notice.classList.add('hidden'); notice.classList.remove('flex'); }
     }
 
+    // Klasifikasi request berdasarkan operasi, bukan awalan nama action.
+    // Semua action pembacaan yang dipakai aplikasi masuk kategori lokal;
+    // operasi mutasi tetap memakai overlay global.
+    const READ_BACKEND_ACTIONS = new Set([
+      'getmenu', 'getlaporan', 'getkaryawan',
+      'inventorylistv1', 'recipelistv1', 'purchaselistv1',
+      'stockadjustmentlistv1'
+    ]);
+
+    const WRITE_BACKEND_ACTIONS = new Set([
+      'login', 'logout', 'validatesession',
+      'simpantransaksi', 'voidtransaksi',
+      'simpankaryawan', 'hapuskaryawan',
+      'tambahmenu', 'editmenu', 'hapusmenu',
+      'inventorycreatev1', 'inventoryupdatev1', 'inventorysetopeningv1',
+      'recipesavev1', 'purchasecreatev1', 'purchaseconfirmv1',
+      'purchasevoiddraftv1', 'stockadjustmentcreatev1',
+      'simpangantishift'
+    ]);
+
+    function isReadBackendAction(action) {
+      const key = String(action || '').toLowerCase();
+      if (READ_BACKEND_ACTIONS.has(key)) return true;
+      if (WRITE_BACKEND_ACTIONS.has(key)) return false;
+      // Fallback untuk endpoint baca tambahan/masa depan.
+      return /^(get|muat|list|daftar|ambil|fetch|read)/.test(key);
+    }
+
     async function trackedFetch(input, init = {}) {
       const url = typeof input === 'string' ? input : (input && input.url) || '';
       const isBackend = !!(webAppUrl && url && url.startsWith(webAppUrl));
       if (!isBackend) return nativeFetch(input, init);
 
       const action = getRequestAction(input, init);
-      const isReadRequest = action.startsWith('get') || action.startsWith('muat');
+      const isReadRequest = isReadBackendAction(action);
       const useInlineLoading = isReadRequest && !sessionBootActive;
 
       activeBackendRequests++;
