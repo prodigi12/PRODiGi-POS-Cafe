@@ -727,7 +727,7 @@
   </main>
 
   <!-- MODAL LOGIN (TEKS PETUNJUK PIN BERSIH) -->
-  <div id="modalLogin" class="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 flex items-center justify-center p-4">
+  <div id="modalLogin" class="hidden fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-amber-500/30 rounded-3xl max-w-sm w-full p-6 text-center space-y-5 shadow-2xl shadow-amber-500/10">
       <div class="w-16 h-16 mx-auto rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-3xl border border-amber-500/40">
         <i class="fa-solid fa-lock"></i>
@@ -757,6 +757,15 @@
         </button>
       </div>
       <div id="listHoldContainer" class="max-h-72 overflow-y-auto space-y-2"></div>
+    </div>
+  </div>
+
+  <!-- GLOBAL LOADING OVERLAY -->
+  <div id="globalLoadingOverlay" class="hidden fixed inset-0 z-[100] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4" aria-live="polite" aria-busy="true">
+    <div class="bg-slate-900 border border-amber-500/30 rounded-2xl px-7 py-6 text-center shadow-2xl min-w-[230px]">
+      <div class="w-12 h-12 mx-auto mb-4 rounded-full border-4 border-slate-700 border-t-amber-400 animate-spin"></div>
+      <p id="globalLoadingText" class="text-sm font-bold text-amber-300">Sedang memuat...</p>
+      <p class="text-[11px] text-slate-400 mt-1">Mohon tunggu, jangan tekan tombol berulang kali.</p>
     </div>
   </div>
 
@@ -805,8 +814,71 @@
     let chartBulananInstance = null;
     let chartRentangInstance = null;
 
-    // Seluruh request aplikasi melewati middleware token sesi. PIN hanya dikirim pada login.
+    // Global loading + middleware token sesi. Semua request backend dihitung agar
+    // overlay tetap aktif sampai seluruh request paralel selesai.
     const nativeFetch = window.fetch.bind(window);
+    let activeBackendRequests = 0;
+    let loadingShowTimer = null;
+    let loadingMessage = 'Sedang memuat...';
+
+    function labelRequestBackend(input, init = {}) {
+      let action = '';
+      try {
+        const raw = init.body || (typeof input === 'object' ? input.body : '');
+        if (typeof raw === 'string') action = (JSON.parse(raw).action || '').toLowerCase();
+      } catch (e) {}
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      if (!action) {
+        const match = url.match(/[?&]action=([^&]+)/);
+        if (match) action = decodeURIComponent(match[1]).toLowerCase();
+      }
+      const labels = {
+        login:'Memverifikasi PIN...', validatesession:'Memulihkan sesi...', logout:'Mengakhiri sesi...',
+        simpantransaksi:'Menyimpan transaksi...', voidtransaksi:'Memproses pembatalan transaksi...',
+        getmenu:'Memuat daftar menu...', getlaporan:'Memuat laporan...', getkaryawan:'Memuat data karyawan...',
+        simpankaryawan:'Menyimpan data karyawan...', hapuskaryawan:'Menghapus data karyawan...',
+        simpanmasterinventori:'Menyimpan data inventori...',
+        simpanpembelianinventori:'Menyimpan pembelian inventori...'
+      };
+      if (labels[action]) return labels[action];
+      if (action.includes('inventori') || action.includes('stok') || action.includes('resep') || action.includes('pembelian')) return 'Memproses data inventori...';
+      if (action.startsWith('get') || action.startsWith('muat')) return 'Memuat data...';
+      if (action.startsWith('hapus')) return 'Menghapus data...';
+      if (action.startsWith('simpan') || action.startsWith('tambah') || action.startsWith('buat')) return 'Menyimpan perubahan...';
+      return 'Sedang memproses permintaan...';
+    }
+
+    function tampilkanGlobalLoading(pesan = 'Sedang memuat...', langsung = false) {
+      loadingMessage = pesan;
+      const text = document.getElementById('globalLoadingText');
+      if (text) text.textContent = loadingMessage;
+      if (loadingShowTimer) clearTimeout(loadingShowTimer);
+      const show = () => {
+        const overlay = document.getElementById('globalLoadingOverlay');
+        if (overlay) overlay.classList.remove('hidden');
+      };
+      if (langsung) show(); else loadingShowTimer = setTimeout(show, 180);
+    }
+
+    function sembunyikanGlobalLoading() {
+      if (loadingShowTimer) { clearTimeout(loadingShowTimer); loadingShowTimer = null; }
+      const overlay = document.getElementById('globalLoadingOverlay');
+      if (overlay) overlay.classList.add('hidden');
+    }
+
+    async function trackedFetch(input, init = {}) {
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      const isBackend = !!(webAppUrl && url && url.startsWith(webAppUrl));
+      if (!isBackend) return nativeFetch(input, init);
+      activeBackendRequests++;
+      tampilkanGlobalLoading(labelRequestBackend(input, init));
+      try { return await nativeFetch(input, init); }
+      finally {
+        activeBackendRequests = Math.max(0, activeBackendRequests - 1);
+        if (activeBackendRequests === 0) sembunyikanGlobalLoading();
+      }
+    }
+
     window.fetch = async function(input, init = {}) {
       const url = typeof input === 'string' ? input : input.url;
       if (!webAppUrl || !url || !url.startsWith(webAppUrl)) return nativeFetch(input, init);
@@ -821,9 +893,9 @@
       } else if (method === 'GET' && !url.includes('action=getMenu')) {
         const parsedAction = (url.match(/[?&]action=([^&]+)/) || [])[1];
         const action = decodeURIComponent(parsedAction || '');
-        if (action) return nativeFetch(webAppUrl, { method:'POST', body:JSON.stringify({ action:action, sessionToken:sessionToken }) });
+        if (action) return trackedFetch(webAppUrl, { method:'POST', body:JSON.stringify({ action:action, sessionToken:sessionToken }) });
       }
-      return nativeFetch(input, options);
+      return trackedFetch(input, options);
     };
 
     // --- SISTEM LOGIN & OTORISASI DIDEFINISIKAN DIAWAL ---
@@ -843,7 +915,7 @@
       if (!webAppUrl) return tampilkanNotif('Hubungkan Web App URL terlebih dahulu. Login lokal tidak tersedia demi keamanan.', 'Koneksi Dibutuhkan', 'error');
       btn.disabled = true; btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Memverifikasi...`;
       try {
-        const res = await nativeFetch(webAppUrl, { method:'POST', body:JSON.stringify({action:'login',pin:pin}) });
+        const res = await trackedFetch(webAppUrl, { method:'POST', body:JSON.stringify({action:'login',pin:pin}) });
         const json = await res.json();
         if (json.status === 'success' && json.sessionToken) {
           userAktif = json.user; sessionToken = json.sessionToken;
@@ -883,7 +955,7 @@
     async function logoutPrompt() {
       if (!confirm('Yakin ingin keluar dari akun ini?')) return;
       const tokenToRevoke = sessionToken;
-      try { if (webAppUrl && tokenToRevoke) await nativeFetch(webAppUrl, {method:'POST',body:JSON.stringify({action:'logout',sessionToken:tokenToRevoke})}); } catch(e) {}
+      try { if (webAppUrl && tokenToRevoke) await trackedFetch(webAppUrl, {method:'POST',body:JSON.stringify({action:'logout',sessionToken:tokenToRevoke})}); } catch(e) {}
       userAktif = null; sessionToken = '';
       localStorage.removeItem('prodigi_pos_user'); localStorage.removeItem('prodigi_pos_session');
       document.getElementById('badgeUserAktif').classList.add('hidden'); bukaModalLogin();
@@ -900,12 +972,14 @@
 
       const savedUser = localStorage.getItem('prodigi_pos_user');
       if (savedUser && sessionToken && webAppUrl) {
+        tampilkanGlobalLoading('Memulihkan sesi...', true);
         try {
-          const check = await nativeFetch(webAppUrl, {method:'POST',body:JSON.stringify({action:'validateSession',sessionToken:sessionToken})});
+          const check = await trackedFetch(webAppUrl, {method:'POST',body:JSON.stringify({action:'validateSession',sessionToken:sessionToken})});
           const state = await check.json();
           if (state.status === 'success') { userAktif = state.user; localStorage.setItem('prodigi_pos_user', JSON.stringify(userAktif)); tutupModalLogin(); terapkanAksesUser(); }
           else { userAktif=null; sessionToken=''; localStorage.removeItem('prodigi_pos_user'); localStorage.removeItem('prodigi_pos_session'); bukaModalLogin(); }
         } catch(e) { userAktif=null; bukaModalLogin(); tampilkanNotif('Sesi belum dapat diverifikasi. Hubungkan kembali dan login ulang.', 'Verifikasi Sesi', 'error'); }
+        finally { if (activeBackendRequests === 0) sembunyikanGlobalLoading(); }
       } else { userAktif=null; bukaModalLogin(); }
       if (webAppUrl) muatMenuBackend(); else pindahTampilan('settingUrl');
     });
