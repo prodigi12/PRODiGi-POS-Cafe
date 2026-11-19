@@ -903,7 +903,7 @@
         try {
           const check = await nativeFetch(webAppUrl, {method:'POST',body:JSON.stringify({action:'validateSession',sessionToken:sessionToken})});
           const state = await check.json();
-          if (state.status === 'success') { userAktif = state.user; localStorage.setItem('prodigi_pos_user', JSON.stringify(userAktif)); terapkanAksesUser(); }
+          if (state.status === 'success') { userAktif = state.user; localStorage.setItem('prodigi_pos_user', JSON.stringify(userAktif)); tutupModalLogin(); terapkanAksesUser(); }
           else { userAktif=null; sessionToken=''; localStorage.removeItem('prodigi_pos_user'); localStorage.removeItem('prodigi_pos_session'); bukaModalLogin(); }
         } catch(e) { userAktif=null; bukaModalLogin(); tampilkanNotif('Sesi belum dapat diverifikasi. Hubungkan kembali dan login ulang.', 'Verifikasi Sesi', 'error'); }
       } else { userAktif=null; bukaModalLogin(); }
