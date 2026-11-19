@@ -117,6 +117,10 @@
             <i class="fa-solid fa-truck-fast w-5 text-amber-500"></i>
             <span>Pembelian</span>
           </button>
+          <button onclick="pindahTampilan('penyesuaianStok')" class="w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 font-medium hover:bg-slate-800/80 text-slate-300">
+            <i class="fa-solid fa-clipboard-check w-5 text-amber-500"></i>
+            <span>Penyesuaian Stok</span>
+          </button>
           <button onclick="pindahTampilan('settingUrl')" class="w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 font-medium hover:bg-slate-800/80 text-slate-300">
             <i class="fa-solid fa-gear w-5 text-amber-500"></i>
             <span>Koneksi Web App</span>
@@ -679,6 +683,33 @@
       <div class="bg-slate-950/60 border border-slate-800 rounded-2xl overflow-hidden"><div class="p-3 sm:p-4 border-b border-slate-800"><h3 class="font-bold text-slate-200 text-sm">Riwayat Pembelian</h3><p class="text-[11px] text-slate-500 mt-1">DRAFT belum memengaruhi stok. Konfirmasi akan menambah stok dan menghitung ulang average cost.</p></div><div class="overflow-x-auto"><table class="w-full min-w-[900px] text-left text-xs"><thead class="bg-slate-900 text-slate-400"><tr><th class="p-3">Tanggal / ID</th><th class="p-3">Supplier / Invoice</th><th class="p-3">Item</th><th class="p-3 text-right">Total</th><th class="p-3">Status</th><th class="p-3 text-right">Aksi</th></tr></thead><tbody id="tabelRiwayatPembelian" class="divide-y divide-slate-800/70 text-slate-300"><tr><td colspan="6" class="p-5 text-center text-slate-500">Memuat pembelian...</td></tr></tbody></table></div></div>
     </section>
 
+    <!-- SECTION: STOCK ADJUSTMENT & STOCK OPNAME V1 -->
+    <section id="sectionPenyesuaianStok" class="hidden max-w-6xl mx-auto space-y-5 w-full">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div><h2 class="text-xl font-black text-amber-400">Penyesuaian Stok</h2><p class="text-xs text-slate-400 mt-1">Catat Stock In, Stock Out, dan Stock Opname. Setiap perubahan masuk ke riwayat mutasi.</p></div>
+        <div class="flex gap-2"><button onclick="muatPenyesuaianStok()" class="px-3 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs font-bold border border-slate-700"><i class="fa-solid fa-rotate mr-1"></i> Refresh</button><button onclick="bukaFormPenyesuaianStok()" class="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-black"><i class="fa-solid fa-plus mr-1"></i> Penyesuaian Baru</button></div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-4"><div class="text-[11px] text-slate-400">Total Penyesuaian</div><div id="adjTotal" class="text-2xl font-black text-white mt-1">0</div></div>
+        <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-4"><div class="text-[11px] text-slate-400">Stock In</div><div id="adjIn" class="text-2xl font-black text-emerald-400 mt-1">0</div></div>
+        <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-4"><div class="text-[11px] text-slate-400">Stock Out</div><div id="adjOut" class="text-2xl font-black text-rose-400 mt-1">0</div></div>
+      </div>
+      <div id="formPenyesuaianCard" class="hidden bg-slate-950/70 border border-amber-500/30 rounded-2xl p-4 sm:p-5 space-y-4">
+        <div class="flex items-center justify-between"><h3 class="font-bold text-amber-400">Form Penyesuaian Stok</h3><button onclick="tutupFormPenyesuaianStok()" class="text-slate-400"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label class="text-xs text-slate-300">Tanggal *<input id="adjTanggal" type="date" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white"></label>
+          <label class="text-xs text-slate-300">Jenis Penyesuaian *<select id="adjJenis" onchange="ubahJenisPenyesuaianUI()" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white"><option value="STOCK_IN">Stock In — Tambah Stok</option><option value="STOCK_OUT">Stock Out — Kurangi Stok</option><option value="STOCK_OPNAME">Stock Opname — Sesuaikan Stok Fisik</option></select></label>
+          <label class="text-xs text-slate-300 sm:col-span-2">Barang Inventori *<select id="adjInventori" onchange="tampilkanSaldoPenyesuaian()" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white"><option value="">Pilih barang...</option></select></label>
+        </div>
+        <div id="adjSaldoInfo" class="rounded-xl bg-slate-900 border border-slate-800 p-3 text-xs text-slate-400">Pilih barang untuk melihat saldo stok saat ini.</div>
+        <label id="adjQtyWrap" class="block text-xs text-slate-300">Jumlah *<input id="adjQty" type="number" min="0.000001" step="any" placeholder="Jumlah penyesuaian" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white"></label>
+        <label id="adjPhysicalWrap" class="hidden block text-xs text-slate-300">Hasil Stok Fisik *<input id="adjStokFisik" type="number" min="0" step="any" placeholder="Jumlah hasil hitung fisik" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white"></label>
+        <label class="block text-xs text-slate-300">Alasan / Catatan *<textarea id="adjAlasan" rows="2" maxlength="500" placeholder="Contoh: koreksi barang rusak, selisih hasil opname, atau barang ditemukan" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white"></textarea></label>
+        <div class="flex justify-end gap-2 border-t border-slate-800 pt-3"><button onclick="tutupFormPenyesuaianStok()" class="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">Batal</button><button id="btnSimpanPenyesuaian" onclick="simpanPenyesuaianStok()" class="px-5 py-2.5 rounded-xl bg-amber-500 text-slate-950 text-xs font-black">Simpan Penyesuaian</button></div>
+      </div>
+      <div class="bg-slate-950/60 border border-slate-800 rounded-2xl overflow-hidden"><div class="p-3 sm:p-4 border-b border-slate-800"><h3 class="font-bold text-slate-200 text-sm">Riwayat Penyesuaian Stok</h3><p class="text-[11px] text-slate-500 mt-1">Average cost tidak berubah akibat koreksi kuantitas. Stok negatif selalu ditolak.</p></div><div class="overflow-x-auto"><table class="w-full min-w-[1000px] text-left text-xs"><thead class="bg-slate-900 text-slate-400"><tr><th class="p-3">Tanggal / ID</th><th class="p-3">Barang</th><th class="p-3">Jenis</th><th class="p-3 text-right">Sistem</th><th class="p-3 text-right">Fisik / Selisih</th><th class="p-3">Alasan</th><th class="p-3">Admin</th><th class="p-3">Status</th></tr></thead><tbody id="tabelRiwayatPenyesuaian" class="divide-y divide-slate-800/70 text-slate-300"><tr><td colspan="8" class="p-5 text-center text-slate-500">Memuat riwayat...</td></tr></tbody></table></div></div>
+    </section>
+
     <!-- SECTION 6: PENGATURAN WEB APP URL -->
     <section id="sectionSettingUrl" class="hidden max-w-xl mx-auto bg-slate-950/60 p-6 rounded-2xl border border-slate-800 w-full">
       <h2 class="text-xl font-bold text-amber-400 mb-2">Konfigurasi Koneksi</h2>
@@ -762,6 +793,7 @@
     let inventoryAdminPin = '';
     let dataResepMenu = { menus: [], inventory: [], recipes: [] };
     let dataPembelianInventori = { purchases: [], inventory: [] };
+    let dataPenyesuaianStok = { adjustments: [], inventory: [] };
 
     let semuaRiwayatTransaksi = [];
     let periodeLaporanAktif = 'harian';
@@ -1320,6 +1352,7 @@
       document.getElementById('sectionInventori').classList.add('hidden');
       document.getElementById('sectionResep').classList.add('hidden');
       document.getElementById('sectionPembelian').classList.add('hidden');
+      document.getElementById('sectionPenyesuaianStok').classList.add('hidden');
       document.getElementById('sectionSettingUrl').classList.add('hidden');
 
       if (namaTampilan === 'kasir') document.getElementById('sectionKasir').classList.remove('hidden');
@@ -1361,6 +1394,11 @@
         document.getElementById('sectionPembelian').classList.remove('hidden');
         if (!inventoryAdminPin) { const pin = prompt('Masukkan PIN Admin untuk mengakses Pembelian:'); if (!pin) { pindahTampilan('kasir'); return; } inventoryAdminPin = pin.trim(); }
         muatPembelianInventori();
+      }
+      if (namaTampilan === 'penyesuaianStok') {
+        document.getElementById('sectionPenyesuaianStok').classList.remove('hidden');
+        if (!inventoryAdminPin) { const pin = prompt('Masukkan PIN Admin untuk mengakses Penyesuaian Stok:'); if (!pin) { pindahTampilan('kasir'); return; } inventoryAdminPin = pin.trim(); }
+        muatPenyesuaianStok();
       }
       if (namaTampilan === 'settingUrl') document.getElementById('sectionSettingUrl').classList.remove('hidden');
     }
@@ -2278,6 +2316,92 @@
       if (!confirm('Batalkan pembelian DRAFT ini? Stok tidak akan berubah.')) return;
       try { const json = await inventoryPost('purchaseVoidDraftV1', { purchaseId: id }); tampilkanNotif(json.message, 'Pembelian Dibatalkan'); await muatPembelianInventori(); }
       catch (err) { tampilkanNotif(err.message, 'Pembatalan Gagal', 'error'); }
+    }
+
+    // --- STOCK ADJUSTMENT & STOCK OPNAME V1 ---
+    async function muatPenyesuaianStok() {
+      if (userAktif?.role !== 'admin') return tampilkanNotif('Penyesuaian stok hanya untuk Admin.', 'Akses Ditolak', 'error');
+      const tbody = document.getElementById('tabelRiwayatPenyesuaian');
+      tbody.innerHTML = `<tr><td colspan="8" class="p-5 text-center text-slate-500">Memuat riwayat penyesuaian...</td></tr>`;
+      try {
+        const json = await inventoryPost('stockAdjustmentListV1');
+        dataPenyesuaianStok = { adjustments: json.data || [], inventory: json.inventory || [] };
+        renderRiwayatPenyesuaianStok();
+      } catch (err) {
+        if (/PIN|Otorisasi/i.test(err.message)) inventoryAdminPin = '';
+        tbody.innerHTML = `<tr><td colspan="8" class="p-5 text-center text-red-400">${escapeHtmlInventori(err.message)}</td></tr>`;
+        tampilkanNotif(err.message, 'Penyesuaian Stok Gagal Dimuat', 'error');
+      }
+    }
+
+    function bukaFormPenyesuaianStok() {
+      const select = document.getElementById('adjInventori');
+      select.innerHTML = `<option value="">Pilih barang...</option>` + dataPenyesuaianStok.inventory.map(i => `<option value="${escapeHtmlInventori(i.id)}">${escapeHtmlInventori(i.nama)} (${escapeHtmlInventori(i.satuan)})</option>`).join('');
+      document.getElementById('adjTanggal').value = new Date().toLocaleDateString('en-CA');
+      document.getElementById('adjJenis').value = 'STOCK_IN';
+      document.getElementById('adjQty').value = '';
+      document.getElementById('adjStokFisik').value = '';
+      document.getElementById('adjAlasan').value = '';
+      document.getElementById('formPenyesuaianCard').classList.remove('hidden');
+      ubahJenisPenyesuaianUI();
+      tampilkanSaldoPenyesuaian();
+      document.getElementById('formPenyesuaianCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function tutupFormPenyesuaianStok() { document.getElementById('formPenyesuaianCard').classList.add('hidden'); }
+
+    function ubahJenisPenyesuaianUI() {
+      const opname = document.getElementById('adjJenis').value === 'STOCK_OPNAME';
+      document.getElementById('adjQtyWrap').classList.toggle('hidden', opname);
+      document.getElementById('adjPhysicalWrap').classList.toggle('hidden', !opname);
+      document.getElementById('btnSimpanPenyesuaian').innerText = opname ? 'Simpan Hasil Opname' : 'Simpan Penyesuaian';
+    }
+
+    function tampilkanSaldoPenyesuaian() {
+      const item = dataPenyesuaianStok.inventory.find(i => i.id === document.getElementById('adjInventori').value);
+      document.getElementById('adjSaldoInfo').innerText = item
+        ? `Stok sistem: ${Number(item.stok).toLocaleString('id-ID')} ${item.satuan} · Average cost: Rp ${Number(item.average).toLocaleString('id-ID')}/${item.satuan}`
+        : 'Pilih barang untuk melihat saldo stok saat ini.';
+      if (item && document.getElementById('adjJenis').value === 'STOCK_OPNAME') document.getElementById('adjStokFisik').placeholder = `Stok sistem saat ini ${item.stok} ${item.satuan}`;
+    }
+
+    async function simpanPenyesuaianStok() {
+      const jenis = document.getElementById('adjJenis').value;
+      const payload = {
+        tanggal: document.getElementById('adjTanggal').value,
+        jenis: jenis,
+        inventoriId: document.getElementById('adjInventori').value,
+        qty: Number(document.getElementById('adjQty').value),
+        stokFisik: Number(document.getElementById('adjStokFisik').value),
+        alasan: document.getElementById('adjAlasan').value.trim(),
+        requestId: 'ADJREQ-' + (window.crypto?.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2))
+      };
+      if (!payload.tanggal || !payload.inventoriId || !payload.alasan) return tampilkanNotif('Tanggal, barang, dan alasan wajib diisi.', 'Validasi', 'error');
+      if (jenis === 'STOCK_OPNAME' ? (!Number.isFinite(payload.stokFisik) || payload.stokFisik < 0) : (!Number.isFinite(payload.qty) || payload.qty <= 0)) return tampilkanNotif('Jumlah penyesuaian tidak valid.', 'Validasi', 'error');
+      const btn = document.getElementById('btnSimpanPenyesuaian');
+      btn.disabled = true;
+      try {
+        const json = await inventoryPost('stockAdjustmentCreateV1', payload);
+        tampilkanNotif(`${json.message}\nStok: ${Number(json.stokSebelum).toLocaleString('id-ID')} → ${Number(json.stokSesudah).toLocaleString('id-ID')}`, 'Penyesuaian Berhasil');
+        tutupFormPenyesuaianStok();
+        await muatPenyesuaianStok();
+        await muatMasterInventori();
+      } catch (err) { tampilkanNotif(err.message, 'Penyesuaian Gagal', 'error'); await muatPenyesuaianStok(); }
+      finally { btn.disabled = false; }
+    }
+
+    function renderRiwayatPenyesuaianStok() {
+      const list = dataPenyesuaianStok.adjustments || [];
+      document.getElementById('adjTotal').innerText = list.length;
+      document.getElementById('adjIn').innerText = list.filter(x => x.selisih > 0).length;
+      document.getElementById('adjOut').innerText = list.filter(x => x.selisih < 0).length;
+      const tbody = document.getElementById('tabelRiwayatPenyesuaian');
+      if (!list.length) { tbody.innerHTML = `<tr><td colspan="8" class="p-5 text-center text-slate-500">Belum ada riwayat penyesuaian stok.</td></tr>`; return; }
+      tbody.innerHTML = list.map(x => {
+        const delta = Number(x.selisih) || 0;
+        const badge = delta > 0 ? 'bg-emerald-500/10 text-emerald-300' : 'bg-rose-500/10 text-rose-300';
+        return `<tr><td class="p-3"><div class="font-bold">${escapeHtmlInventori(x.tanggal)}</div><div class="text-[10px] text-slate-500">${escapeHtmlInventori(x.id)}</div></td><td class="p-3"><div class="font-bold">${escapeHtmlInventori(x.nama)}</div><div class="text-[10px] text-slate-500">${escapeHtmlInventori(x.inventoriId)}</div></td><td class="p-3">${escapeHtmlInventori(x.jenis)}</td><td class="p-3 text-right">${Number(x.stokSistem).toLocaleString('id-ID')} ${escapeHtmlInventori(x.satuan)}</td><td class="p-3 text-right"><div>${Number(x.stokFisik).toLocaleString('id-ID')} ${escapeHtmlInventori(x.satuan)}</div><span class="px-2 py-0.5 rounded ${badge}">${delta > 0 ? '+' : ''}${delta.toLocaleString('id-ID')}</span></td><td class="p-3 whitespace-normal max-w-xs">${escapeHtmlInventori(x.alasan)}</td><td class="p-3">${escapeHtmlInventori(x.adminNama)}</td><td class="p-3">${escapeHtmlInventori(x.status)}</td></tr>`;
+      }).join('');
     }
 
     // --- POS TRANSAKSI & KERANJANG ---
