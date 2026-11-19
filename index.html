@@ -153,6 +153,11 @@
 
   <!-- KONTEN UTAMA -->
   <main class="flex-1 p-3 sm:p-4 max-w-7xl mx-auto w-full flex flex-col">
+    <!-- Indikator ringan untuk request baca saat navigasi; tidak mengunci interaksi -->
+    <div id="inlineLoadingNotice" class="hidden mb-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-300 items-center gap-2" role="status" aria-live="polite">
+      <i class="fa-solid fa-circle-notch fa-spin"></i>
+      <span id="inlineLoadingText">Memuat data...</span>
+    </div>
     
     <!-- SECTION 1: KASIR POS -->
     <section id="sectionKasir" class="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 flex-1">
@@ -823,26 +828,31 @@
     let chartBulananInstance = null;
     let chartRentangInstance = null;
 
-    // Global loading + middleware token sesi. Semua request backend dihitung agar
-    // overlay tetap aktif sampai seluruh request paralel selesai.
+    // Loading kontekstual: startup dan operasi tulis memakai overlay global;
+    // request baca saat navigasi memakai indikator kecil di area konten.
     const nativeFetch = window.fetch.bind(window);
     let activeBackendRequests = 0;
+    let activeReadRequests = 0;
     let loadingShowTimer = null;
+    let inlineLoadingTimer = null;
     let loadingMessage = 'Menyiapkan PRODiGi POS...';
-    // Layar yang sama dipakai untuk boot, pemulihan sesi, dan seluruh request backend.
     let sessionBootActive = true;
 
-    function labelRequestBackend(input, init = {}) {
-      let action = '';
+    function getRequestAction(input, init = {}) {
       try {
         const raw = init.body || (typeof input === 'object' ? input.body : '');
-        if (typeof raw === 'string') action = (JSON.parse(raw).action || '').toLowerCase();
+        if (typeof raw === 'string') {
+          const parsed = JSON.parse(raw);
+          if (parsed.action) return String(parsed.action).toLowerCase();
+        }
       } catch (e) {}
       const url = typeof input === 'string' ? input : (input && input.url) || '';
-      if (!action) {
-        const match = url.match(/[?&]action=([^&]+)/);
-        if (match) action = decodeURIComponent(match[1]).toLowerCase();
-      }
+      const match = url.match(/[?&]action=([^&]+)/);
+      return match ? decodeURIComponent(match[1]).toLowerCase() : '';
+    }
+
+    function labelRequestBackend(input, init = {}) {
+      const action = getRequestAction(input, init);
       const labels = {
         login:'Memverifikasi PIN...', validatesession:'Memulihkan sesi...', logout:'Mengakhiri sesi...',
         simpantransaksi:'Menyimpan transaksi...', voidtransaksi:'Memproses pembatalan transaksi...',
@@ -855,7 +865,7 @@
       if (action.includes('inventori') || action.includes('stok') || action.includes('resep') || action.includes('pembelian')) return 'Memproses data inventori...';
       if (action.startsWith('get') || action.startsWith('muat')) return 'Memuat data...';
       if (action.startsWith('hapus')) return 'Menghapus data...';
-      if (action.startsWith('simpan') || action.startsWith('tambah') || action.startsWith('buat')) return 'Menyimpan perubahan...';
+      if (action.startsWith('simpan') || action.startsWith('tambah') || action.startsWith('buat') || action.startsWith('void')) return 'Menyimpan perubahan...';
       return 'Sedang memproses permintaan...';
     }
 
@@ -875,21 +885,51 @@
 
     function sembunyikanGlobalLoading() {
       if (loadingShowTimer) { clearTimeout(loadingShowTimer); loadingShowTimer = null; }
-      // Saat boot belum selesai, layar harus tetap menutup UI sampai halaman tujuan siap.
       if (sessionBootActive) return;
       const overlay = document.getElementById('sessionBootScreen');
       if (overlay) overlay.classList.add('hidden');
+    }
+
+    function tampilkanInlineLoading(pesan) {
+      const notice = document.getElementById('inlineLoadingNotice');
+      const text = document.getElementById('inlineLoadingText');
+      if (text) text.textContent = pesan;
+      if (inlineLoadingTimer) clearTimeout(inlineLoadingTimer);
+      inlineLoadingTimer = setTimeout(() => {
+        if (notice) notice.classList.remove('hidden');
+        if (notice) notice.classList.add('flex');
+      }, 140);
+    }
+
+    function sembunyikanInlineLoading() {
+      if (inlineLoadingTimer) { clearTimeout(inlineLoadingTimer); inlineLoadingTimer = null; }
+      const notice = document.getElementById('inlineLoadingNotice');
+      if (notice) { notice.classList.add('hidden'); notice.classList.remove('flex'); }
     }
 
     async function trackedFetch(input, init = {}) {
       const url = typeof input === 'string' ? input : (input && input.url) || '';
       const isBackend = !!(webAppUrl && url && url.startsWith(webAppUrl));
       if (!isBackend) return nativeFetch(input, init);
+
+      const action = getRequestAction(input, init);
+      const isReadRequest = action.startsWith('get') || action.startsWith('muat');
+      const useInlineLoading = isReadRequest && !sessionBootActive;
+
       activeBackendRequests++;
-      tampilkanGlobalLoading(labelRequestBackend(input, init));
+      if (useInlineLoading) {
+        activeReadRequests++;
+        tampilkanInlineLoading(labelRequestBackend(input, init));
+      } else {
+        tampilkanGlobalLoading(labelRequestBackend(input, init), sessionBootActive);
+      }
       try { return await nativeFetch(input, init); }
       finally {
         activeBackendRequests = Math.max(0, activeBackendRequests - 1);
+        if (useInlineLoading) {
+          activeReadRequests = Math.max(0, activeReadRequests - 1);
+          if (activeReadRequests === 0) sembunyikanInlineLoading();
+        }
         if (activeBackendRequests === 0) sembunyikanGlobalLoading();
       }
     }
