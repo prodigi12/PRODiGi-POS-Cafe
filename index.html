@@ -958,7 +958,9 @@
       try { if (webAppUrl && tokenToRevoke) await trackedFetch(webAppUrl, {method:'POST',body:JSON.stringify({action:'logout',sessionToken:tokenToRevoke})}); } catch(e) {}
       userAktif = null; sessionToken = '';
       localStorage.removeItem('prodigi_pos_user'); localStorage.removeItem('prodigi_pos_session');
-      document.getElementById('badgeUserAktif').classList.add('hidden'); bukaModalLogin();
+      document.getElementById('badgeUserAktif').classList.add('hidden');
+      localStorage.removeItem('prodigi_pos_active_page');
+      bukaModalLogin();
     }
 
     // --- INISIALISASI HALAMAN ---
@@ -976,9 +978,27 @@
         try {
           const check = await trackedFetch(webAppUrl, {method:'POST',body:JSON.stringify({action:'validateSession',sessionToken:sessionToken})});
           const state = await check.json();
-          if (state.status === 'success') { userAktif = state.user; localStorage.setItem('prodigi_pos_user', JSON.stringify(userAktif)); tutupModalLogin(); terapkanAksesUser(); }
-          else { userAktif=null; sessionToken=''; localStorage.removeItem('prodigi_pos_user'); localStorage.removeItem('prodigi_pos_session'); bukaModalLogin(); }
-        } catch(e) { userAktif=null; bukaModalLogin(); tampilkanNotif('Sesi belum dapat diverifikasi. Hubungkan kembali dan login ulang.', 'Verifikasi Sesi', 'error'); }
+          if (state.status === 'success') {
+            userAktif = state.user;
+            localStorage.setItem('prodigi_pos_user', JSON.stringify(userAktif));
+            tutupModalLogin();
+            terapkanAksesUser();
+            const halamanTersimpan = localStorage.getItem('prodigi_pos_active_page') || 'kasir';
+            const halamanDiizinkan = userAktif.role === 'admin'
+              ? ['kasir','gantiShift','laporan','inputMenu','karyawan','inventori','resep','pembelian','penyesuaianStok','settingUrl']
+              : ['kasir','gantiShift'];
+            pindahTampilan(halamanDiizinkan.includes(halamanTersimpan) ? halamanTersimpan : 'kasir');
+          } else {
+            userAktif=null; sessionToken='';
+            localStorage.removeItem('prodigi_pos_user');
+            localStorage.removeItem('prodigi_pos_session');
+            bukaModalLogin();
+          }
+        } catch(e) {
+          userAktif=null;
+          bukaModalLogin();
+          tampilkanNotif('Sesi belum dapat diverifikasi. Hubungkan kembali dan login ulang.', 'Verifikasi Sesi', 'error');
+        }
         finally { if (activeBackendRequests === 0) sembunyikanGlobalLoading(); }
       } else { userAktif=null; bukaModalLogin(); }
       if (webAppUrl) muatMenuBackend(); else pindahTampilan('settingUrl');
@@ -1396,6 +1416,10 @@
 
     function pindahTampilan(namaTampilan) {
       window.autohideSidebar();
+
+      if (userAktif && ['kasir','gantiShift','laporan','inputMenu','karyawan','inventori','resep','pembelian','penyesuaianStok','settingUrl'].includes(namaTampilan)) {
+        localStorage.setItem('prodigi_pos_active_page', namaTampilan);
+      }
 
       if (userAktif?.role !== 'admin' && (namaTampilan !== 'kasir' && namaTampilan !== 'gantiShift')) {
         return tampilkanNotif('Menu ini dikunci khusus Owner/Admin.', 'Akses Terbatas', 'error');
