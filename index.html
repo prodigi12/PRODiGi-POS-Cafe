@@ -43,7 +43,7 @@
     <div class="text-center">
       <div class="w-12 h-12 mx-auto mb-4 rounded-full border-4 border-slate-700 border-t-amber-400 animate-spin"></div>
       <p id="sessionBootText" class="text-sm font-bold text-amber-300">Menyiapkan PRODiGi POS...</p>
-      <p class="text-[11px] text-slate-400 mt-2">Mohon tunggu sebentar.</p>
+      <p id="sessionBootSubtext" class="text-[11px] text-slate-400 mt-2">Mohon tunggu sebentar.</p>
     </div>
   </div>
 
@@ -778,15 +778,6 @@
     </div>
   </div>
 
-  <!-- GLOBAL LOADING OVERLAY -->
-  <div id="globalLoadingOverlay" class="hidden fixed inset-0 z-[100] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4" aria-live="polite" aria-busy="true">
-    <div class="bg-slate-900 border border-amber-500/30 rounded-2xl px-7 py-6 text-center shadow-2xl min-w-[230px]">
-      <div class="w-12 h-12 mx-auto mb-4 rounded-full border-4 border-slate-700 border-t-amber-400 animate-spin"></div>
-      <p id="globalLoadingText" class="text-sm font-bold text-amber-300">Sedang memuat...</p>
-      <p class="text-[11px] text-slate-400 mt-1">Mohon tunggu, jangan tekan tombol berulang kali.</p>
-    </div>
-  </div>
-
   <!-- MODAL NOTIFIKASI KUSTOM -->
   <div id="modalNotif" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 transition-opacity">
     <div class="bg-slate-950 border border-amber-500/30 rounded-2xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl shadow-amber-500/10">
@@ -837,7 +828,9 @@
     const nativeFetch = window.fetch.bind(window);
     let activeBackendRequests = 0;
     let loadingShowTimer = null;
-    let loadingMessage = 'Sedang memuat...';
+    let loadingMessage = 'Menyiapkan PRODiGi POS...';
+    // Layar yang sama dipakai untuk boot, pemulihan sesi, dan seluruh request backend.
+    let sessionBootActive = true;
 
     function labelRequestBackend(input, init = {}) {
       let action = '';
@@ -866,13 +859,15 @@
       return 'Sedang memproses permintaan...';
     }
 
-    function tampilkanGlobalLoading(pesan = 'Sedang memuat...', langsung = false) {
+    function tampilkanGlobalLoading(pesan = 'Sedang memproses permintaan...', langsung = false) {
       loadingMessage = pesan;
-      const text = document.getElementById('globalLoadingText');
+      const text = document.getElementById('sessionBootText');
+      const subtext = document.getElementById('sessionBootSubtext');
       if (text) text.textContent = loadingMessage;
+      if (subtext) subtext.textContent = 'Mohon tunggu sebentar.';
       if (loadingShowTimer) clearTimeout(loadingShowTimer);
       const show = () => {
-        const overlay = document.getElementById('globalLoadingOverlay');
+        const overlay = document.getElementById('sessionBootScreen');
         if (overlay) overlay.classList.remove('hidden');
       };
       if (langsung) show(); else loadingShowTimer = setTimeout(show, 180);
@@ -880,7 +875,9 @@
 
     function sembunyikanGlobalLoading() {
       if (loadingShowTimer) { clearTimeout(loadingShowTimer); loadingShowTimer = null; }
-      const overlay = document.getElementById('globalLoadingOverlay');
+      // Saat boot belum selesai, layar harus tetap menutup UI sampai halaman tujuan siap.
+      if (sessionBootActive) return;
+      const overlay = document.getElementById('sessionBootScreen');
       if (overlay) overlay.classList.add('hidden');
     }
 
@@ -1020,10 +1017,10 @@
         finally { if (activeBackendRequests === 0) sembunyikanGlobalLoading(); }
       } else { userAktif=null; bukaModalLogin(); }
 
-      // Lepaskan layar boot hanya setelah status sesi diputuskan dan halaman tujuan dipilih.
+      // Lepaskan satu layar loading setelah sesi dan halaman tujuan selesai dipulihkan.
       document.body.classList.remove('session-booting');
-      const bootScreen = document.getElementById('sessionBootScreen');
-      if (bootScreen) bootScreen.classList.add('hidden');
+      sessionBootActive = false;
+      if (activeBackendRequests === 0) sembunyikanGlobalLoading();
 
       if (webAppUrl) muatMenuBackend(); else if (!userAktif) pindahTampilan('settingUrl');
     });
