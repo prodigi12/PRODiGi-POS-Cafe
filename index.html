@@ -26,8 +26,26 @@
       }
     }
   </script>
+  <style>
+    /* Cegah tampilan default Kasir POS terlihat sebelum pemulihan sesi selesai. */
+    body.session-booting > header,
+    body.session-booting > #sidebarBackdrop,
+    body.session-booting > #sidebar,
+    body.session-booting > main {
+      visibility: hidden !important;
+    }
+  </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans transition-colors duration-200">
+<body class="session-booting bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans transition-colors duration-200">
+
+  <!-- LAYAR PEMULIHAN AWAL: menutup tampilan default sampai halaman tujuan dipulihkan -->
+  <div id="sessionBootScreen" class="fixed inset-0 z-[200] bg-slate-950 flex items-center justify-center p-4" role="status" aria-live="polite" aria-busy="true">
+    <div class="text-center">
+      <div class="w-12 h-12 mx-auto mb-4 rounded-full border-4 border-slate-700 border-t-amber-400 animate-spin"></div>
+      <p id="sessionBootText" class="text-sm font-bold text-amber-300">Menyiapkan PRODiGi POS...</p>
+      <p class="text-[11px] text-slate-400 mt-2">Mohon tunggu sebentar.</p>
+    </div>
+  </div>
 
   <!-- TOPBAR -->
   <header class="bg-slate-950/80 backdrop-blur border-b border-slate-800 px-4 py-3 flex items-center justify-between sticky top-0 z-30">
@@ -1001,7 +1019,13 @@
         }
         finally { if (activeBackendRequests === 0) sembunyikanGlobalLoading(); }
       } else { userAktif=null; bukaModalLogin(); }
-      if (webAppUrl) muatMenuBackend(); else pindahTampilan('settingUrl');
+
+      // Lepaskan layar boot hanya setelah status sesi diputuskan dan halaman tujuan dipilih.
+      document.body.classList.remove('session-booting');
+      const bootScreen = document.getElementById('sessionBootScreen');
+      if (bootScreen) bootScreen.classList.add('hidden');
+
+      if (webAppUrl) muatMenuBackend(); else if (!userAktif) pindahTampilan('settingUrl');
     });
 
     // --- FORM PECAHAN UANG GANTI SHIFT ---
