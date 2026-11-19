@@ -790,7 +790,7 @@
     let daftarKaryawan = [];
     let webAppUrl = localStorage.getItem('prodigi_pos_url') || '';
     let daftarInventori = [];
-    let inventoryAdminPin = '';
+    let sessionToken = localStorage.getItem('prodigi_pos_session') || '';
     let dataResepMenu = { menus: [], inventory: [], recipes: [] };
     let dataPembelianInventori = { purchases: [], inventory: [] };
     let dataPenyesuaianStok = { adjustments: [], inventory: [] };
@@ -804,6 +804,27 @@
     let chartMingguanInstance = null;
     let chartBulananInstance = null;
     let chartRentangInstance = null;
+
+    // Seluruh request aplikasi melewati middleware token sesi. PIN hanya dikirim pada login.
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async function(input, init = {}) {
+      const url = typeof input === 'string' ? input : input.url;
+      if (!webAppUrl || !url || !url.startsWith(webAppUrl)) return nativeFetch(input, init);
+      const options = { ...init };
+      const method = String(options.method || 'GET').toUpperCase();
+      if (method === 'POST' && options.body && typeof options.body === 'string') {
+        try {
+          const body = JSON.parse(options.body);
+          if (body.action !== 'login') body.sessionToken = sessionToken;
+          options.body = JSON.stringify(body);
+        } catch (e) {}
+      } else if (method === 'GET' && !url.includes('action=getMenu')) {
+        const parsedAction = (url.match(/[?&]action=([^&]+)/) || [])[1];
+        const action = decodeURIComponent(parsedAction || '');
+        if (action) return nativeFetch(webAppUrl, { method:'POST', body:JSON.stringify({ action:action, sessionToken:sessionToken }) });
+      }
+      return nativeFetch(input, options);
+    };
 
     // --- SISTEM LOGIN & OTORISASI DIDEFINISIKAN DIAWAL ---
     function bukaModalLogin() {
@@ -819,48 +840,18 @@
       e.preventDefault();
       const pin = document.getElementById('inputPinLogin').value.trim();
       const btn = document.getElementById('btnLoginSubmit');
-
-      if (!webAppUrl) {
-        if (pin === '8888') {
-          userAktif = { id: 'USR-ADMIN', nama: 'Owner Warkop', role: 'admin' };
-        } else if (pin === '1234') {
-          userAktif = { id: 'USR-KASIR', nama: 'Kasir Utama', role: 'kasir' };
-        } else {
-          return tampilkanNotif('PIN salah! Silakan coba lagi.', 'Login Gagal', 'error');
-        }
-        simpanSesiLogin();
-        return;
-      }
-
-      btn.disabled = true;
-      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Memverifikasi...`;
-
+      if (!webAppUrl) return tampilkanNotif('Hubungkan Web App URL terlebih dahulu. Login lokal tidak tersedia demi keamanan.', 'Koneksi Dibutuhkan', 'error');
+      btn.disabled = true; btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Memverifikasi...`;
       try {
-        const res = await fetch(webAppUrl, {
-          method: 'POST',
-          body: JSON.stringify({ action: 'login', pin: pin })
-        });
+        const res = await nativeFetch(webAppUrl, { method:'POST', body:JSON.stringify({action:'login',pin:pin}) });
         const json = await res.json();
-        if (json.status === 'success') {
-          userAktif = json.user;
+        if (json.status === 'success' && json.sessionToken) {
+          userAktif = json.user; sessionToken = json.sessionToken;
+          localStorage.setItem('prodigi_pos_session', sessionToken);
           simpanSesiLogin();
-        } else {
-          tampilkanNotif(json.message || 'PIN Login Tidak Valid!', 'Login Gagal', 'error');
-        }
-      } catch (err) {
-        if (pin === '8888') {
-          userAktif = { id: 'USR-ADMIN', nama: 'Owner Warkop', role: 'admin' };
-          simpanSesiLogin();
-        } else if (pin === '1234') {
-          userAktif = { id: 'USR-KASIR', nama: 'Kasir Utama', role: 'kasir' };
-          simpanSesiLogin();
-        } else {
-          tampilkanNotif('Gagal menghubungkan ke server login.', 'Koneksi Error', 'error');
-        }
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = `Masuk Aplikasi`;
-      }
+        } else tampilkanNotif(json.message || 'PIN Login Tidak Valid!', 'Login Gagal', 'error');
+      } catch (err) { tampilkanNotif('Gagal menghubungkan ke server login. Tidak ada login offline.', 'Koneksi Error', 'error'); }
+      finally { btn.disabled = false; btn.innerHTML = 'Masuk Aplikasi'; }
     }
 
     function simpanSesiLogin() {
@@ -889,17 +880,17 @@
       }
     }
 
-    function logoutPrompt() {
+    async function logoutPrompt() {
       if (!confirm('Yakin ingin keluar dari akun ini?')) return;
-      userAktif = null;
-      inventoryAdminPin = '';
-      localStorage.removeItem('prodigi_pos_user');
-      document.getElementById('badgeUserAktif').classList.add('hidden');
-      bukaModalLogin();
+      const tokenToRevoke = sessionToken;
+      try { if (webAppUrl && tokenToRevoke) await nativeFetch(webAppUrl, {method:'POST',body:JSON.stringify({action:'logout',sessionToken:tokenToRevoke})}); } catch(e) {}
+      userAktif = null; sessionToken = '';
+      localStorage.removeItem('prodigi_pos_user'); localStorage.removeItem('prodigi_pos_session');
+      document.getElementById('badgeUserAktif').classList.add('hidden'); bukaModalLogin();
     }
 
     // --- INISIALISASI HALAMAN ---
-    window.addEventListener('DOMContentLoaded', () => {
+    window.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('inputWebAppUrl').value = webAppUrl;
       setupTheme();
       setupSidebarEvents();
@@ -908,22 +899,15 @@
       renderFormPecahanGantiShift();
 
       const savedUser = localStorage.getItem('prodigi_pos_user');
-      if (savedUser) {
+      if (savedUser && sessionToken && webAppUrl) {
         try {
-          userAktif = JSON.parse(savedUser);
-          terapkanAksesUser();
-        } catch (e) {
-          bukaModalLogin();
-        }
-      } else {
-        bukaModalLogin();
-      }
-
-      if (webAppUrl) {
-        muatMenuBackend();
-      } else {
-        pindahTampilan('settingUrl');
-      }
+          const check = await nativeFetch(webAppUrl, {method:'POST',body:JSON.stringify({action:'validateSession',sessionToken:sessionToken})});
+          const state = await check.json();
+          if (state.status === 'success') { userAktif = state.user; localStorage.setItem('prodigi_pos_user', JSON.stringify(userAktif)); terapkanAksesUser(); }
+          else { userAktif=null; sessionToken=''; localStorage.removeItem('prodigi_pos_user'); localStorage.removeItem('prodigi_pos_session'); bukaModalLogin(); }
+        } catch(e) { userAktif=null; bukaModalLogin(); tampilkanNotif('Sesi belum dapat diverifikasi. Hubungkan kembali dan login ulang.', 'Verifikasi Sesi', 'error'); }
+      } else { userAktif=null; bukaModalLogin(); }
+      if (webAppUrl) muatMenuBackend(); else pindahTampilan('settingUrl');
     });
 
     // --- FORM PECAHAN UANG GANTI SHIFT ---
@@ -997,7 +981,7 @@
           
           const txHariIni = semuaRiwayatTransaksi.filter(tx => {
             const d = parseDateObj(tx.waktu);
-            return d && d >= awalHariIni && tx.status !== 'VOID';
+            return d && d >= awalHariIni && tx.status === 'SUKSES';
           });
 
           const totalHariIni = txHariIni.reduce((sum, tx) => sum + (Number(tx.total) || 0), 0);
@@ -1079,15 +1063,14 @@
         return tampilkanNotif('Hanya role Owner/Admin yang diizinkan melakukan VOID transaksi.', 'Akses Ditolak', 'error');
       }
 
-      const pinAdmin = prompt(`Konfirmasi Otorisasi VOID:\nMasukkan PIN Admin untuk membatalkan nota [${txId}]:`);
-      if (!pinAdmin) return;
+      if (!confirm(`Konfirmasi VOID transaksi [${txId}]?`)) return;
 
       if (!webAppUrl) return tampilkanNotif('URL Web App belum terhubung.', 'Error', 'error');
 
       try {
         const res = await fetch(webAppUrl, {
           method: 'POST',
-          body: JSON.stringify({ action: 'voidTransaksi', txId: txId, pinAdmin: pinAdmin })
+          body: JSON.stringify({ action: 'voidTransaksi', txId: txId })
         });
         const json = await res.json();
         if (json.status === 'success') {
@@ -1374,30 +1357,18 @@
       }
       if (namaTampilan === 'inventori') {
         document.getElementById('sectionInventori').classList.remove('hidden');
-        if (!inventoryAdminPin) {
-          const pin = prompt('Masukkan PIN Admin untuk mengakses Master Inventori:');
-          if (!pin) { pindahTampilan('kasir'); return; }
-          inventoryAdminPin = pin.trim();
-        }
         muatMasterInventori();
       }
       if (namaTampilan === 'resep') {
         document.getElementById('sectionResep').classList.remove('hidden');
-        if (!inventoryAdminPin) {
-          const pin = prompt('Masukkan PIN Admin untuk mengakses Resep Menu:');
-          if (!pin) { pindahTampilan('kasir'); return; }
-          inventoryAdminPin = pin.trim();
-        }
         muatResepMenu();
       }
       if (namaTampilan === 'pembelian') {
         document.getElementById('sectionPembelian').classList.remove('hidden');
-        if (!inventoryAdminPin) { const pin = prompt('Masukkan PIN Admin untuk mengakses Pembelian:'); if (!pin) { pindahTampilan('kasir'); return; } inventoryAdminPin = pin.trim(); }
         muatPembelianInventori();
       }
       if (namaTampilan === 'penyesuaianStok') {
         document.getElementById('sectionPenyesuaianStok').classList.remove('hidden');
-        if (!inventoryAdminPin) { const pin = prompt('Masukkan PIN Admin untuk mengakses Penyesuaian Stok:'); if (!pin) { pindahTampilan('kasir'); return; } inventoryAdminPin = pin.trim(); }
         muatPenyesuaianStok();
       }
       if (namaTampilan === 'settingUrl') document.getElementById('sectionSettingUrl').classList.remove('hidden');
@@ -1967,7 +1938,7 @@
       if (!webAppUrl) throw new Error('Web App URL belum terhubung.');
       const res = await fetch(webAppUrl, {
         method: 'POST',
-        body: JSON.stringify({ action, adminPin: inventoryAdminPin, ...payload })
+        body: JSON.stringify({ action, sessionToken: sessionToken, ...payload })
       });
       const json = await res.json();
       if (json.status !== 'success') throw new Error(json.message || 'Permintaan inventori gagal.');
@@ -1983,7 +1954,6 @@
         daftarInventori = json.data || [];
         renderTabelInventori();
       } catch (err) {
-        if (/PIN|Otorisasi/i.test(err.message)) inventoryAdminPin = '';
         tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-red-400">${escapeHtmlInventori(err.message)}</td></tr>`;
         tampilkanNotif(err.message, 'Inventori Gagal Dimuat', 'error');
       }
@@ -2125,7 +2095,6 @@
         renderStatusResepMenu();
         if (document.getElementById('resepMenuSelect').value) pilihMenuResep();
       } catch (err) {
-        if (/PIN|Otorisasi/i.test(err.message)) inventoryAdminPin = '';
         tbody.innerHTML = `<tr><td colspan="4" class="p-5 text-center text-red-400">${escapeHtmlInventori(err.message)}</td></tr>`;
         tampilkanNotif(err.message, 'Resep Menu Gagal Dimuat', 'error');
       }
@@ -2232,7 +2201,6 @@
         dataPembelianInventori = { purchases: json.data || [], inventory: json.inventory || [] };
         renderRiwayatPembelian();
       } catch (err) {
-        if (/PIN|Otorisasi/i.test(err.message)) inventoryAdminPin = '';
         tbody.innerHTML = `<tr><td colspan="6" class="p-5 text-center text-red-400">${escapeHtmlInventori(err.message)}</td></tr>`;
         tampilkanNotif(err.message, 'Pembelian Gagal Dimuat', 'error');
       }
@@ -2328,7 +2296,6 @@
         dataPenyesuaianStok = { adjustments: json.data || [], inventory: json.inventory || [] };
         renderRiwayatPenyesuaianStok();
       } catch (err) {
-        if (/PIN|Otorisasi/i.test(err.message)) inventoryAdminPin = '';
         tbody.innerHTML = `<tr><td colspan="8" class="p-5 text-center text-red-400">${escapeHtmlInventori(err.message)}</td></tr>`;
         tampilkanNotif(err.message, 'Penyesuaian Stok Gagal Dimuat', 'error');
       }
@@ -2540,7 +2507,8 @@
         total: total,
         bayar: bayar,
         kembalian: kembalian,
-        items: keranjang.map(k => ({ nama: k.nama, qty: k.qty, harga: k.harga }))
+        requestId: 'REQ-' + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(16).slice(2)),
+        items: keranjang.map(k => ({ menuId: k.id, nama: k.nama, qty: k.qty, harga: k.harga }))
       };
 
       try {
